@@ -1,0 +1,6 @@
+python-telegram-bot>=21.0,<22.0
+phonenumbers>=8.13.0
+pycountry>=23.12.11
+pytz>=2024.1
+requests>=2.31.0
+python-dotenv>=1.0.0
