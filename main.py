@@ -8,6 +8,10 @@ country-level facts derived from the dialing code.
 
 from __future__ import annotations
 
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -191,9 +195,50 @@ def build_application() -> Application:
     return application
 
 
+class _HealthCheckHandler(BaseHTTPRequestHandler):
+    """Minimal HTTP handler that just replies 200 OK on any request.
+
+    This exists only so that hosting platforms which require an open HTTP
+    port for "Web Service" deployments (e.g. Render) see the app as healthy.
+    It has nothing to do with the bot's actual functionality.
+    """
+
+    def do_GET(self) -> None:  # noqa: N802 - required method name
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Number To Country Info Bot is running.")
+
+    def log_message(self, format: str, *args) -> None:  # noqa: A002 - silence default logging
+        pass
+
+
+def _start_health_check_server() -> None:
+    """Start a background HTTP server bound to $PORT, if one is provided.
+
+    Render (and similar platforms) inject a PORT environment variable and
+    expect the process to listen on it. This is only started when PORT is
+    set, so local runs and Background Worker deployments are unaffected.
+    """
+    port_str = os.getenv("PORT")
+    if not port_str:
+        return
+    try:
+        port = int(port_str)
+    except ValueError:
+        logger.warning("Invalid PORT value %r; skipping health check server.", port_str)
+        return
+
+    server = HTTPServer(("0.0.0.0", port), _HealthCheckHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    logger.info("Health check HTTP server listening on port %s", port)
+
+
 def main() -> None:
     """Run the bot with long polling."""
     logger.info("Starting Number To Country Info Bot...")
+    _start_health_check_server()
     application = build_application()
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
